@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
+import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import UserManagement from "./pages/UserManagement";
@@ -10,11 +11,13 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/users" element={<UserManagement />} />
-        <Route path="/widgets" element={<Widgets />} />
-        <Route path="/api" element={<ApiPlayground />} />
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/users" element={<UserManagement />} />
+          <Route path="/widgets" element={<Widgets />} />
+          <Route path="/api" element={<ApiPlayground />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );
