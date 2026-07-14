@@ -16,6 +16,11 @@ app.use("/api/users", (req, res, next) => {
   next();
 });
 
+app.all("/api/users/:id", (req, res, next) => {
+  console.log("SERVER ALL /api/users/:id", req.method, req.params.id);
+  next();
+});
+
 app.get("/api/users/:id", async (req, res) => {
   console.log("SERVER GET /api/users/:id", req.params.id);
   try {
