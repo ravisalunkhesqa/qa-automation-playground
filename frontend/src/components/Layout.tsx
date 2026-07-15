@@ -4,19 +4,14 @@ import { supabase } from "../services/supabaseClient";
 
 export default function Layout() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     const loadSession = async () => {
-      if (!supabase) {
-        setLoading(false);
-        return;
-      }
+      if (!supabase) return;
 
       const { data } = await supabase.auth.getSession();
       setUserEmail(data.session?.user?.email ?? null);
-      setLoading(false);
     };
 
     loadSession();
