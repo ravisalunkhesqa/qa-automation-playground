@@ -52,6 +52,12 @@ app.patch("/api/users/:id", async (req, res) => {
 
 app.use("/api/users", userRoutes);
 
+// Root: provide a simple redirect to the health endpoint so the service
+// responds at `/` instead of showing "Cannot GET /" from Express.
+app.get('/', (req, res) => {
+  res.redirect('/api/health');
+});
+
 app.get("/api/health", async (req, res) => {
   try {
     const result = await supabaseHealth();
