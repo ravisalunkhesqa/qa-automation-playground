@@ -65,12 +65,12 @@ In Render, add the following environment variables for the backend service:
 - Output directory: `dist`
 
 ### Add frontend environment variables
-In Vercel, add these variables:
+In Vercel, add these variables (production):
 - `VITE_SUPABASE_URL` = `https://mudathgsbymbxhlsimsc.supabase.co`
 - `VITE_SUPABASE_PUBLISHABLE_KEY` = `sb_publishable_MwyiYeVQq_3Cr6mGNGpSzg_y8KXx6Av`
-- `VITE_API_BASE_URL` = `https://your-backend-service.onrender.com/api`
+- `VITE_API_BASE_URL` = `https://qa-automation-playground.onrender.com/api`
 
-> Replace `https://your-backend-service.onrender.com` with your actual Render backend URL.
+Replace the example `VITE_API_BASE_URL` above if you change your Render primary URL.
 
 ### Deploy and verify
 1. Deploy the Vercel project.

@@ -9,4 +9,9 @@ A demo QA automation playground with a React/Vite frontend and an Express/Supaba
 
 ## Deployment
 
-See `DEPLOYMENT.md` for detailed setup steps using Vercel for frontend and Railway for backend.
+Deployed instances:
+
+- Frontend (Vercel): https://qa-automation-playground-pho3klzkj-qautomationplayground.vercel.app/
+- Backend (Render): https://qa-automation-playground.onrender.com
+
+See `DEPLOYMENT_VERCEL_RENDER.md` and `DEPLOYMENT.md` for setup instructions.
