@@ -29,6 +29,10 @@ export default function UserManagement() {
     loadItems();
   }, []);
 
+  useEffect(() => {
+    document.title = "CRUD — QA Automation Playground";
+  }, []);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
@@ -62,7 +66,7 @@ export default function UserManagement() {
   };
 
   return (
-    <div className="page-card">
+    <div className="page-card compact">
       <div className="stack">
         <p className="eyebrow">Data CRUD</p>
         <h1>Manage playground items</h1>

@@ -43,9 +43,13 @@ export default function Widgets() {
   useEffect(() => {
     generatePopup();
   }, []);
+  
+  useEffect(() => {
+    document.title = "Widgets — QA Automation Playground";
+  }, []);
 
   return (
-    <div className="page-card">
+    <div className="page-card compact">
       <div className="stack">
         <p className="eyebrow">Widgets</p>
         <h1>Interactive control playground</h1>

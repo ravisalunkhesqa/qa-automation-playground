@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getSupabaseStatus, supabase } from "../services/supabaseClient";
 
-export default function Dashboard() {
+export default function Home() {
   const [supabaseStatus] = useState(getSupabaseStatus());
   const [authMessage, setAuthMessage] = useState<string>("Checking auth...");
   const [userEmail, setUserEmail] = useState<string>("");
@@ -26,6 +26,7 @@ export default function Dashboard() {
     };
 
     checkSession();
+    document.title = "Home — QA Automation Playground";
   }, []);
 
   const handleGoToLogin = () => {
@@ -51,23 +52,27 @@ export default function Dashboard() {
     <div className="page-card page-card--hero">
       <div className="page-hero">
         <div>
-          <p className="eyebrow">Dashboard</p>
+          <p className="eyebrow">Home</p>
           <h1>QA Automation Playground</h1>
           <p className="intro">
-            Compact status insights for backend auth state and playground access.
+            A compact demo app for practicing authentication, CRUD operations,
+            and API automation. Use the navigation to explore the API Playground,
+            try HRMS-style employee endpoints, and exercise the sample CRUD
+            interfaces backed by Supabase.
+          </p>
+          <p className="intro">
+            Quick tips: Start by signing in (top-right), visit "API" to run
+            requests, and use "Employees" for HRMS scenarios including
+            departments and job titles.
           </p>
         </div>
+
         <div className="panel">
           <div className="status-grid">
             <div>
               <span>Backend configured</span>
               <strong>{supabaseStatus.configured ? "Yes" : "No"}</strong>
             </div>
-            
-{/*             <div>
-              <span>Publishable key</span>
-              <strong>{supabaseStatus.publishableKey ? "Yes" : "No"}</strong>
-            </div> */}
             <div>
               <span>Auth status</span>
               <strong>{authMessage}</strong>

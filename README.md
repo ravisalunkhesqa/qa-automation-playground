@@ -53,10 +53,38 @@ After starting both services locally, open the API playground page in the fronte
 - PATCH `/api/users/:id`
 - DELETE `/api/users/:id`
 
+### SQL Playground (development only)
+
+- POST `/api/sql/run` — run a read-only SQL query (development only). The endpoint accepts a JSON body `{ "query": "SELECT ..." }` and returns `{ rowCount, rows }`.
+
+Security notes:
+- The SQL playground is disabled in production by default. It is enabled when `NODE_ENV` is not `production` or when `ENABLE_SQL_PLAYGROUND=true` is set in your environment.
+- For safety the endpoint only accepts read-only `SELECT` queries; attempts to run `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE`, or similar statements will be rejected.
+
 ## Notes
 
 - If deploying, set `VITE_API_BASE_URL` in Vercel to your backend URL (e.g. `https://qa-automation-playground.onrender.com/api`).
 - The deployment guides `DEPLOYMENT_VERCEL_RENDER.md` and `DEPLOYMENT.md` contain step-by-step instructions for Vercel/Render and Vercel/Railway setups.
+
+## HRMS-style API expansion
+
+The backend now includes an HRMS-style API surface for automation practice:
+
+- `GET /api/employees`
+- `GET /api/employees/:id`
+- `POST /api/employees`
+- `PUT /api/employees/:id`
+- `PATCH /api/employees/:id`
+- `DELETE /api/employees/:id`
+- `GET /api/departments`
+- `POST /api/departments`
+- `GET /api/jobtitles`
+- `POST /api/jobtitles`
+- `POST /api/employees/:id/documents`
+- `GET /api/employees/search?department=QA`
+- `GET /api/employees?page=1&limit=10`
+
+A schema starter file is available at `backend-api/HRMS_SCHEMA.sql`.
 
 ---
 

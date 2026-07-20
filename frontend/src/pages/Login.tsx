@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabaseClient";
 
@@ -64,22 +64,25 @@ export default function Login() {
       if (error) {
         setMessage(error.message);
       } else {
-        setMessage("Check your email to confirm your account.");
-        navigate("/users");
+        setMessage("Account created successfully. Check your email to confirm your account.");
       }
     }
 
     setLoading(false);
   };
 
+  useEffect(() => {
+    document.title = "Login — QA Automation Playground";
+  }, []);
+
   return (
-    <div className="page-card" style={{ maxWidth: "500px", margin: "0 auto" }}>
+    <div className="page-card compact centered-card">
       <p className="eyebrow">Account access</p>
       <h1>{mode === "sign-in" ? "Sign in" : "Create account"}</h1>
       <p className="intro">Securely sign in or create an account.</p>
 
-      <form onSubmit={handleSubmit} className="form-grid">
-        <label>
+      <form onSubmit={handleSubmit} className="form-grid compact-form">
+        <label className="field-label">
           Email address
           <input
             type="email"
@@ -90,7 +93,7 @@ export default function Login() {
           />
         </label>
 
-        <label>
+        <label className="field-label">
           Password
           <div className="password-field">
             <input
@@ -122,6 +125,6 @@ export default function Login() {
         </p>
         <p className="fine-print">Use a real email such as yourname@gmail.com or user@outlook.com.</p>
       </div>
-    </div>
+      </div>
   );
 }

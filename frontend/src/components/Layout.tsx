@@ -1,23 +1,71 @@
 import { useEffect, useState } from "react";
-import { Link, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabaseClient";
+
+const API_ROOT = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean);
 
 export default function Layout() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const navigate = useNavigate();
+  const [pageTitle, setPageTitle] = useState<string>("QA Automation Playground");
 
   useEffect(() => {
     const loadSession = async () => {
       if (!supabase) return;
 
       const { data } = await supabase.auth.getSession();
-      setUserEmail(data.session?.user?.email ?? null);
+      const email = data.session?.user?.email ?? null;
+      setUserEmail(email);
+
+      if (email) {
+        try {
+          const res = await fetch(`${API_ROOT}/admin/auth-users/me`, {
+            headers: {
+              'x-admin-email': email.toLowerCase()
+            }
+          });
+          if (res.ok) {
+            const payload = await res.json();
+            setIsAdmin(Boolean(payload.allowed));
+            setIsSuperAdmin(Boolean(payload.is_super_admin));
+          } else {
+            setIsAdmin(false);
+            setIsSuperAdmin(false);
+          }
+        } catch (error) {
+          setIsAdmin(false);
+          setIsSuperAdmin(false);
+        }
+      }
     };
 
     loadSession();
 
     const { data: authListener } = supabase?.auth.onAuthStateChange((_, session) => {
-      setUserEmail(session?.user?.email ?? null);
+      const email = session?.user?.email ?? null;
+      setUserEmail(email);
+      if (email) {
+        fetch(`${API_ROOT}/admin/auth-users/me`, {
+          headers: {
+            'x-admin-email': email.toLowerCase()
+          }
+        })
+          .then((res) => res.ok ? res.json() : Promise.reject(res))
+          .then((payload) => {
+            setIsAdmin(Boolean(payload.allowed));
+            setIsSuperAdmin(Boolean(payload.is_super_admin));
+          })
+          .catch(() => {
+            setIsAdmin(false);
+            setIsSuperAdmin(false);
+          });
+      } else {
+        setIsAdmin(false);
+        setIsSuperAdmin(false);
+      }
     }) ?? { data: null };
 
     return () => {
@@ -34,13 +82,13 @@ export default function Layout() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
+      <header className="app-header compact">
         <div className="brand-row">
           <div>
             <Link to="/" className="brand-logo">
               QA Automation Playground
             </Link>
-            <p className="brand-tagline">A modern playground for auth, CRUD, and API exploration.</p>
+            <p className="brand-tagline compact">A modern playground for auth, CRUD, and API exploration.</p>
           </div>
 
           <div className="user-panel">
@@ -58,17 +106,22 @@ export default function Layout() {
             )}
           </div>
         </div>
-
-        <nav className="app-nav">
-          <Link to="/">Dashboard</Link>
-          {!userEmail && <Link to="/login">Login</Link>}
-          <Link to="/users">CRUD</Link>
-          <Link to="/widgets">Widgets</Link>
-          <Link to="/api">API</Link>
-        </nav>
       </header>
 
-      <main className="page-shell">
+      <div className="app-nav-wrap">
+        <nav className="app-nav">
+          <NavLink to="/" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Home</NavLink>
+          {!userEmail && <NavLink to="/login" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Login</NavLink>}
+          <NavLink to="/users" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>CRUD</NavLink>
+          <NavLink to="/employees" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Employees</NavLink>
+          <NavLink to="/widgets" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Widgets</NavLink>
+          <NavLink to="/api" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>API</NavLink>
+          <NavLink to="/sql" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>SQL</NavLink>
+          {isAdmin && <NavLink to="/admin" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>Admin</NavLink>}
+        </nav>
+      </div>
+
+      <main className="page-shell compact">
         <Outlet />
       </main>
     </div>
