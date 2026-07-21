@@ -14,7 +14,7 @@ export async function listPlaygroundItems() {
 
   const { data, error } = await supabase.from("playground_items").select("*").order("id", { ascending: true });
   if (error) {
-    throw error;
+    throw new Error(error.message || JSON.stringify(error));
   }
   return data as PlaygroundItem[];
 }
@@ -26,7 +26,7 @@ export async function createPlaygroundItem(payload: { name: string; description:
 
   const { data, error } = await supabase.from("playground_items").insert(payload).select().single();
   if (error) {
-    throw error;
+    throw new Error(error.message || JSON.stringify(error));
   }
   return data as PlaygroundItem;
 }
@@ -38,7 +38,7 @@ export async function updatePlaygroundItem(id: number, payload: { name: string; 
 
   const { data, error } = await supabase.from("playground_items").update(payload).eq("id", id).select().single();
   if (error) {
-    throw error;
+    throw new Error(error.message || JSON.stringify(error));
   }
   return data as PlaygroundItem;
 }
@@ -50,6 +50,6 @@ export async function deletePlaygroundItem(id: number) {
 
   const { error } = await supabase.from("playground_items").delete().eq("id", id);
   if (error) {
-    throw error;
+    throw new Error(error.message || JSON.stringify(error));
   }
 }

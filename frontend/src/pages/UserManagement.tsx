@@ -20,7 +20,7 @@ export default function UserManagement() {
       setItems(data as Item[]);
       setMessage("");
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Unknown error";
+      const detail = error instanceof Error ? error.message : String(error);
       setMessage(`Unable to load items. ${detail}`);
     }
   };

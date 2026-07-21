@@ -109,15 +109,23 @@ const buildEmployeeResponse = (employee) => {
 };
 
 const applyEmployeeFilters = (employees, filters = {}) => {
+  const name = (filters.name || '').toString().trim().toLowerCase();
   const department = (filters.department || '').toString().trim().toLowerCase();
   const status = (filters.status || '').toString().trim().toLowerCase();
   const isActive = (filters.isActive || '').toString().trim().toLowerCase();
 
   return employees.filter((employee) => {
+    const firstName = (employee.firstName || employee.first_name || '').toString().toLowerCase();
+    const lastName = (employee.lastName || employee.last_name || '').toString().toLowerCase();
+    const fullName = `${firstName} ${lastName}`.trim();
+    const reversedFullName = `${lastName} ${firstName}`.trim();
+
+    const matchesName = !name || fullName.includes(name) || reversedFullName.includes(name);
     const matchesDepartment = !department || (employee.department?.departmentName || employee.department?.department_name || '').toString().toLowerCase().includes(department);
     const matchesStatus = !status || (employee.employmentStatus || employee.employment_status || '').toString().toLowerCase().includes(status);
     const matchesActive = isActive === '' || String(employee.isActive ?? employee.is_active) === isActive;
-    return matchesDepartment && matchesStatus && matchesActive;
+
+    return matchesName && matchesDepartment && matchesStatus && matchesActive;
   });
 };
 
@@ -407,6 +415,7 @@ router.get('/employees', async (req, res) => {
   try {
     const employees = (await fetchEmployeesFromDb()).map(buildEmployeeResponse);
     const filters = {
+      name: req.query.name,
       department: req.query.department,
       status: req.query.status,
       isActive: req.query.isActive,
@@ -534,6 +543,12 @@ router.put('/employees/:id', async (req, res) => {
     const id = req.params.id;
     const employee = await fetchEmployeeFromDb(id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
+
+    // enforce required fields on PUT
+    const errors = validateEmployeePayload(req.body || {});
+    if (errors.length > 0) {
+      return res.status(400).json({ message: 'Validation failed', errors });
+    }
 
     let updatedEmployee = employee;
 

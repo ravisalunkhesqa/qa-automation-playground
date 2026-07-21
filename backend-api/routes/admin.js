@@ -6,7 +6,7 @@ const { supabase } = require('../supabase');
 dotenv.config();
 
 // Dev-only admin route: lists auth users from Supabase
-// Protected by ADMIN_EMAILS env var: only those configured emails can call this route.
+// Protected by admin role checks and optional ADMIN_EMAILS configuration.
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL || '').split(',').map((email) => String(email).trim().toLowerCase()).filter(Boolean);
 
 function normalizeEmail(value) {
@@ -16,12 +16,15 @@ function normalizeEmail(value) {
 function getRoleLabel(user) {
   if (!user) return 'end user';
   if (user.is_super_admin) return 'super admin';
-  if (String(user.role || '').trim().toLowerCase() === 'admin') return 'admin';
+  const appRole = String(user?.raw_user_meta_data?.role || user?.role || '').trim().toLowerCase();
+  if (appRole === 'admin') return 'admin';
   return 'end user';
 }
 
 function isAdminUser(user) {
-  return Boolean(user && (user.is_super_admin || String(user.role || '').trim().toLowerCase() === 'admin'));
+  if (!user) return false;
+  if (user.is_super_admin) return true;
+  return String(user?.raw_user_meta_data?.role || user?.role || '').trim().toLowerCase() === 'admin';
 }
 
 async function getAuthUserByEmail(email) {
@@ -30,27 +33,25 @@ async function getAuthUserByEmail(email) {
 
   const { query } = require('../db');
   const result = await query(
-    'SELECT id, email, role, is_super_admin, raw_app_meta_data, raw_user_meta_data, created_at FROM auth.users WHERE LOWER(email) = $1 LIMIT 1',
+    'SELECT id, email, "role", is_super_admin, raw_app_meta_data, raw_user_meta_data, created_at FROM auth.users WHERE email ILIKE $1 LIMIT 1',
     [normalized]
   );
   return result.rows[0] || null;
 }
 
 async function getAuthUserById(id) {
-  const parsedId = Number(id);
-  if (!parsedId) return null;
+  const normalizedId = String(id || '').trim();
+  if (!normalizedId) return null;
 
   const { query } = require('../db');
   const result = await query(
-    'SELECT id, email, role, is_super_admin, raw_app_meta_data, raw_user_meta_data, created_at FROM auth.users WHERE id = $1 LIMIT 1',
-    [parsedId]
+    'SELECT id, email, "role", is_super_admin, raw_app_meta_data, raw_user_meta_data, created_at FROM auth.users WHERE id = $1 LIMIT 1',
+    [normalizedId]
   );
   return result.rows[0] || null;
 }
 
 router.get('/auth-users/me', async (req, res) => {
-  if (!ADMIN_EMAILS.length) return res.status(403).json({ message: 'Admin route not configured' });
-
   const caller = normalizeEmail(req.headers['x-admin-email']);
   if (!caller) {
     return res.status(403).json({ message: 'Forbidden' });
@@ -71,8 +72,6 @@ router.get('/auth-users/me', async (req, res) => {
 });
 
 router.get('/auth-users', async (req, res) => {
-  if (!ADMIN_EMAILS.length) return res.status(403).json({ message: 'Admin route not configured' });
-
   const caller = normalizeEmail(req.headers['x-admin-email']);
   if (!caller) {
     return res.status(403).json({ message: 'Forbidden' });
@@ -104,7 +103,7 @@ router.get('/auth-users', async (req, res) => {
     // Attempt to fetch via Postgres using server-side db connection if available.
     const { query } = require('../db');
     try {
-      const rows = await query("SELECT id, email, role, raw_app_meta_data, raw_user_meta_data, is_super_admin, created_at FROM auth.users ORDER BY id DESC LIMIT 500");
+      const rows = await query("SELECT id, email, \"role\", raw_app_meta_data, raw_user_meta_data, is_super_admin, created_at FROM auth.users ORDER BY id DESC LIMIT 500");
       return res.json({
         caller: {
           email: callerUser.email,
@@ -145,8 +144,8 @@ router.post('/auth-users/super-admin', async (req, res) => {
   try {
     const { query } = require('../db');
     const result = await query(
-      'UPDATE auth.users SET is_super_admin = true WHERE LOWER(email) = $1 RETURNING id, email, role, is_super_admin, created_at',
-      [email]
+      'UPDATE auth.users SET "role" = $1, is_super_admin = true WHERE email ILIKE $2 RETURNING id, email, "role", is_super_admin, raw_user_meta_data, created_at',
+      ['authenticated', email]
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'User not found' });
@@ -208,8 +207,8 @@ router.post('/auth-users/role', async (req, res) => {
   try {
     const { query } = require('../db');
     const result = await query(
-      'UPDATE auth.users SET role = $1, is_super_admin = $2 WHERE LOWER(email) = $3 RETURNING id, email, role, is_super_admin, created_at',
-      [roleValue, isSuperAdminValue, email]
+      "UPDATE auth.users SET raw_user_meta_data = jsonb_set(coalesce(raw_user_meta_data, '{}'::jsonb), '{role}', to_jsonb($1::text)), is_super_admin = $2, \"role\" = $3 WHERE email ILIKE $4 RETURNING id, email, \"role\", is_super_admin, raw_user_meta_data, created_at",
+      [roleValue, isSuperAdminValue, 'authenticated', email]
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'User not found' });
@@ -220,9 +219,33 @@ router.post('/auth-users/role', async (req, res) => {
   }
 });
 
-router.delete('/auth-users/:id', async (req, res) => {
-  if (!ADMIN_EMAILS.length) return res.status(403).json({ message: 'Admin route not configured' });
+router.post('/auth-users/migrate-roles', async (req, res) => {
+  const caller = normalizeEmail(req.headers['x-admin-email']);
+  if (!caller) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
 
+  const callerUser = await getAuthUserByEmail(caller);
+  if (!callerUser) {
+    return res.status(403).json({ message: 'Caller email not registered in auth users' });
+  }
+
+  if (!callerUser.is_super_admin) {
+    return res.status(403).json({ message: 'Only super admins can migrate roles' });
+  }
+
+  try {
+    const { query } = require('../db');
+    const result = await query(
+      "UPDATE auth.users SET raw_user_meta_data = jsonb_set(coalesce(raw_user_meta_data, '{}'::jsonb), '{role}', to_jsonb('admin'::text)), \"role\" = 'authenticated' WHERE \"role\" ILIKE 'admin' RETURNING id, email, \"role\", is_super_admin, raw_user_meta_data, created_at"
+    );
+    return res.json({ migrated: result.rowCount, rows: result.rows });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to migrate admin roles', error: err.message });
+  }
+});
+
+router.delete('/auth-users/:id', async (req, res) => {
   const caller = normalizeEmail(req.headers['x-admin-email']);
   if (!caller) {
     return res.status(403).json({ message: 'Forbidden' });

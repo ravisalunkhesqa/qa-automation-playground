@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import axios from "axios";
 
@@ -43,6 +43,10 @@ export default function ApiPlayground() {
   const [response, setResponse] = useState<any>(null);
   const [responseStatus, setResponseStatus] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({ key: "employeeId", direction: "asc" });
+  const pageSizeOptions = [5, 10, 15, 20, 25, 50, 100];
 
   const loadItems = async () => {
     try {
@@ -57,7 +61,69 @@ export default function ApiPlayground() {
     }
   };
 
+  const handleSort = (key: string) => {
+    setSortConfig((current) => {
+      if (current.key === key) {
+        return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+      }
+      return { key, direction: "asc" };
+    });
+  };
+
+  const getSortableValue = (item: Item, key: string) => {
+    switch (key) {
+      case "id":
+        return item.id ?? -1;
+      case "name":
+        return item.name?.toLowerCase() ?? "";
+      case "description":
+        return item.description?.toLowerCase() ?? "";
+      case "employeeId":
+        return item.employeeId ?? -1;
+      case "employeeCode":
+        return item.employeeCode?.toLowerCase() ?? "";
+      case "firstName":
+        return item.firstName?.toLowerCase() ?? "";
+      case "lastName":
+        return item.lastName?.toLowerCase() ?? "";
+      case "username":
+        return item.username?.toLowerCase() ?? "";
+      case "email":
+        return item.email?.toLowerCase() ?? "";
+      case "status":
+        return (item.employmentStatus || "").toLowerCase();
+      case "department":
+        return item.department?.departmentName?.toLowerCase() ?? "";
+      case "jobTitle":
+        return item.jobTitle?.jobTitleName?.toLowerCase() ?? "";
+      default:
+        return "";
+    }
+  };
+
+  const sortedItems = useMemo(() => {
+    const list = [...items];
+    list.sort((a, b) => {
+      const aValue = getSortableValue(a, sortConfig.key);
+      const bValue = getSortableValue(b, sortConfig.key);
+      if (typeof aValue === "number" && typeof bValue === "number") {
+        return sortConfig.direction === "asc" ? aValue - bValue : bValue - aValue;
+      }
+      const comparison = String(aValue).localeCompare(String(bValue), undefined, { sensitivity: "base" });
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+    return list;
+  }, [items, sortConfig]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedItems.length / pageSize));
+  const visibleItems = useMemo(() => {
+    const startIndex = (page - 1) * pageSize;
+    return sortedItems.slice(startIndex, startIndex + pageSize);
+  }, [page, pageSize, sortedItems]);
+
   useEffect(() => {
+    setPage(1);
+    setSortConfig({ key: mode === "legacy" ? "id" : "employeeId", direction: "asc" });
     loadItems();
   }, [mode]);
 
@@ -74,6 +140,12 @@ export default function ApiPlayground() {
     setDepartmentId("1");
     setJobTitleId("1");
   }, [mode]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(1);
+    }
+  }, [page, totalPages]);
 
   useEffect(() => {
     document.title = "API Playground — QA Automation Playground";
@@ -181,9 +253,9 @@ export default function ApiPlayground() {
       <div className="page-card compact centered-card-wide spaced-panel">
         <div className="stack">
           <p className="eyebrow">HTTP methods</p>
-          <h2>Playground request runner</h2>
+          <h2>Playground for API request runner</h2>
           <p className="intro">
-            Execute and inspect GET, POST, PUT, PATCH, and DELETE requests against the local API.
+            Execute and inspect GET, POST, PUT, PATCH, and DELETE requests against the API.
           </p>
         </div>
         <div className="method-tabs spaced-top">
@@ -387,27 +459,27 @@ export default function ApiPlayground() {
             <thead>
               {mode === "legacy" ? (
                 <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Description</th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("id")}>ID <span className="table-sort-indicator">{sortConfig.key === "id" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("name")}>Name <span className="table-sort-indicator">{sortConfig.key === "name" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("description")}>Description <span className="table-sort-indicator">{sortConfig.key === "description" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
                   <th>Action</th>
                 </tr>
               ) : (
                 <tr>
-                  <th>ID</th>
-                  <th>Code</th>
-                  <th>Name</th>
-                  <th>Username</th>
-                  <th>Email</th>
-                  <th>Status</th>
-                  <th>Department</th>
-                  <th>Job title</th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("employeeId")}>ID <span className="table-sort-indicator">{sortConfig.key === "employeeId" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("employeeCode")}>Code <span className="table-sort-indicator">{sortConfig.key === "employeeCode" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("name")}>Name <span className="table-sort-indicator">{sortConfig.key === "name" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("username")}>Username <span className="table-sort-indicator">{sortConfig.key === "username" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("email")}>Email <span className="table-sort-indicator">{sortConfig.key === "email" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("status")}>Status <span className="table-sort-indicator">{sortConfig.key === "status" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("department")}>Department <span className="table-sort-indicator">{sortConfig.key === "department" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("jobTitle")}>Job title <span className="table-sort-indicator">{sortConfig.key === "jobTitle" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
                   <th>Action</th>
                 </tr>
               )}
             </thead>
             <tbody>
-              {items.map((item, index) => (
+              {visibleItems.map((item, index) => (
                 <tr key={item.id ?? item.employeeId ?? index}>
                   {mode === "legacy" ? (
                     <>
@@ -441,6 +513,32 @@ export default function ApiPlayground() {
               ))}
             </tbody>
           </table>
+          {items.length > 0 ? (
+            <div className="table-footer">
+              <div className="table-footer__controls">
+                <label className="table-page-size">
+                  <span>Rows</span>
+                  <select
+                    value={pageSize}
+                    onChange={(event) => {
+                      setPageSize(Number(event.target.value));
+                      setPage(1);
+                    }}
+                  >
+                    {pageSizeOptions.map((size) => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                </label>
+                <span className="table-summary">Showing {Math.min((page - 1) * pageSize + 1, sortedItems.length)}-{Math.min(page * pageSize, sortedItems.length)} of {sortedItems.length}</span>
+              </div>
+              <div className="pagination-controls">
+                <button className="button button--secondary" type="button" disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Prev</button>
+                <span>Page {page} of {totalPages}</span>
+                <button className="button button--secondary" type="button" disabled={page === totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

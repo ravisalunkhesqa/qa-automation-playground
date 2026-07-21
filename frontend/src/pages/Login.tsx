@@ -57,7 +57,7 @@ export default function Login() {
         setMessage(error.message);
       } else {
         setMessage("Signed in successfully.");
-        navigate("/users");
+        navigate("/");
       }
     } else {
       const { error } = await supabase.auth.signUp({ email: normalizedEmail, password });

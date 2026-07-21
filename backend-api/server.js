@@ -8,7 +8,6 @@ const { supabase, supabaseHealth } = require("./supabase");
 const { initializeDatabase } = require("./db");
 
 const app = express();
-const userRoutes = require("./routes/users");
 const hrmsRoutes = require("./routes/hrms");
 const adminRoutes = require("./routes/admin");
 
@@ -18,46 +17,6 @@ initializeDatabase().catch((error) => {
 
 app.use(cors());
 app.use(express.json());
-app.use("/api/users", (req, res, next) => {
-  console.log("API request to /api/users:", req.method, req.originalUrl);
-  next();
-});
-
-app.all("/api/users/:id", (req, res, next) => {
-  console.log("SERVER ALL /api/users/:id", req.method, req.params.id);
-  next();
-});
-
-app.get("/api/users/:id", async (req, res) => {
-  console.log("SERVER GET /api/users/:id", req.params.id);
-  try {
-    const { data, error } = await supabase.from("playground_items").select("*").eq("id", req.params.id).single();
-    if (error || !data) {
-      return res.status(404).json({ message: "Item not found", error: error?.message || "No matching row" });
-    }
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch item", error: error.message });
-  }
-});
-
-app.patch("/api/users/:id", async (req, res) => {
-  console.log("SERVER PATCH /api/users/:id", req.params.id, req.body);
-  try {
-    const payload = {};
-    if (req.body.name !== undefined) payload.name = req.body.name;
-    if (req.body.description !== undefined) payload.description = req.body.description;
-    const { data, error } = await supabase.from("playground_items").update(payload).eq("id", req.params.id).select().single();
-    if (error || !data) {
-      return res.status(404).json({ message: "Item not found", error: error?.message || "No matching row" });
-    }
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ message: "Failed to patch item", error: error.message });
-  }
-});
-
-app.use("/api/users", userRoutes);
 app.use("/api", hrmsRoutes);
 app.use('/api/admin', adminRoutes);
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 
 const API_ROOT = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
@@ -70,17 +70,76 @@ export default function EmployeeManagement() {
   const [form, setForm] = useState(createEmptyForm);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({ key: "employeeId", direction: "asc" });
+  const pageSizeOptions = [5, 10, 15, 20, 25, 50, 100];
+
+  const handleSort = (key: string) => {
+    setSortConfig((current) => {
+      if (current.key === key) {
+        return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+      }
+      return { key, direction: "asc" };
+    });
+  };
+
+  const getSortableValue = (employee: Employee, key: string) => {
+    switch (key) {
+      case "employeeId":
+        return employee.employeeId;
+      case "employeeCode":
+        return employee.employeeCode?.toLowerCase() ?? "";
+      case "name":
+        return `${employee.firstName} ${employee.lastName}`.toLowerCase();
+      case "username":
+        return employee.username?.toLowerCase() ?? "";
+      case "email":
+        return employee.email?.toLowerCase() ?? "";
+      case "status":
+        return (employee.employmentStatus || "").toLowerCase();
+      case "department":
+        return employee.department?.departmentName?.toLowerCase() ?? "";
+      case "jobTitle":
+        return employee.jobTitle?.jobTitleName?.toLowerCase() ?? "";
+      default:
+        return "";
+    }
+  };
+
+  const sortedEmployees = useMemo(() => {
+    const list = [...employees];
+    list.sort((a, b) => {
+      const aValue = getSortableValue(a, sortConfig.key);
+      const bValue = getSortableValue(b, sortConfig.key);
+      if (typeof aValue === "number" && typeof bValue === "number") {
+        return sortConfig.direction === "asc" ? aValue - bValue : bValue - aValue;
+      }
+      const comparison = String(aValue).localeCompare(String(bValue), undefined, { sensitivity: "base" });
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+    return list;
+  }, [employees, sortConfig]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedEmployees.length / pageSize));
+  const visibleEmployees = useMemo(() => {
+    const startIndex = (page - 1) * pageSize;
+    return sortedEmployees.slice(startIndex, startIndex + pageSize);
+  }, [page, pageSize, sortedEmployees]);
 
   const loadEmployees = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (searchTerm.trim()) params.set("department", searchTerm.trim());
+      if (searchTerm.trim()) params.set("name", searchTerm.trim());
       if (department) params.set("department", department);
       if (status) params.set("status", status);
       const query = params.toString();
       const result = await axios.get(`${API_ROOT}/employees${query ? `?${query}` : ""}`);
       setEmployees(result.data?.items || []);
+      setPage(1);
       setErrorMessage("");
     } catch (error) {
       setErrorMessage("Unable to load employees.");
@@ -88,6 +147,13 @@ export default function EmployeeManagement() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const clearFilters = async () => {
+    setSearchTerm("");
+    setDepartment("");
+    setStatus("");
+    await loadEmployees();
   };
 
   const openCreateModal = () => {
@@ -104,6 +170,19 @@ export default function EmployeeManagement() {
 
   const handleCreateEmployee = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // client-side validation
+    const clientErrors: Record<string, string> = {};
+    if (!form.firstName) clientErrors.firstName = 'First name is required';
+    if (!form.lastName) clientErrors.lastName = 'Last name is required';
+    if (!form.username) clientErrors.username = 'Username is required';
+    if (!form.email) clientErrors.email = 'Email is required';
+    if (!form.departmentId) clientErrors.departmentId = 'Department is required';
+    if (!form.jobTitleId) clientErrors.jobTitleId = 'Job title is required';
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      return;
+    }
+    setFormErrors({});
     try {
       const payload = {
         firstName: form.firstName,
@@ -170,6 +249,20 @@ export default function EmployeeManagement() {
     event.preventDefault();
     if (!editingEmployee) return;
 
+    // client-side validation
+    const clientErrors: Record<string, string> = {};
+    if (!form.firstName) clientErrors.firstName = 'First name is required';
+    if (!form.lastName) clientErrors.lastName = 'Last name is required';
+    if (!form.username) clientErrors.username = 'Username is required';
+    if (!form.email) clientErrors.email = 'Email is required';
+    if (!form.departmentId) clientErrors.departmentId = 'Department is required';
+    if (!form.jobTitleId) clientErrors.jobTitleId = 'Job title is required';
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      return;
+    }
+    setFormErrors({});
+
     try {
       const payload = {
         employeeCode: editingEmployee.employeeCode,
@@ -196,14 +289,52 @@ export default function EmployeeManagement() {
       closeModal();
       await loadEmployees();
     } catch (error) {
-      setErrorMessage("Unable to update employee.");
+      // Surface useful error details for debugging
+      const detail = (error as any)?.response?.data?.message || (error as any)?.message || 'Unable to update employee';
+      setErrorMessage(`Unable to update employee. ${detail}`);
+      // show validation errors from server if present
+      const srvErrors = (error as any)?.response?.data?.errors;
+      if (Array.isArray(srvErrors)) {
+        const mapped: Record<string, string> = {};
+        srvErrors.forEach((e: string) => {
+          // map basic messages like 'firstName is required' to field keys
+          const m = e.match(/^(\w+) is required$/);
+          if (m) mapped[m[1]] = `${m[1]} is required`;
+        });
+        setFormErrors(mapped);
+      }
+      console.error('Update employee error', (error as any)?.response?.data || error);
+    }
+  };
+
+  const handleDeleteEmployee = async (employeeId: number) => {
+    // open confirm modal
+    setConfirmDeleteId(employeeId);
+  };
+
+  const confirmDelete = async () => {
+    if (!confirmDeleteId) return;
+    try {
+      await axios.delete(`${API_ROOT}/employees/${confirmDeleteId}`);
+      setConfirmDeleteId(null);
+      await loadEmployees();
+    } catch (error) {
+      setErrorMessage('Unable to delete employee.');
       console.error(error);
     }
   };
 
+  const cancelDelete = () => setConfirmDeleteId(null);
+
   useEffect(() => {
     loadEmployees();
   }, []);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(1);
+    }
+  }, [page, totalPages]);
 
   useEffect(() => {
     document.title = "Employees — QA Automation Playground";
@@ -212,26 +343,26 @@ export default function EmployeeManagement() {
   return (
     <div className="compact-container">
       <h1>Employee Management</h1>
-      <p className="intro">HRMS-style employee list for CRUD and UI automation practice.</p>
+      <p className="intro">Employee Management for CRUD and UI automation practice.</p>
 
       {errorMessage ? <p className="error-text">{errorMessage}</p> : null}
 
       <div className="page-card compact spaced-panel">
         <div className="panel-row">
-          <h2>Employees</h2>
+          <h2>Filter Employees</h2>
           <div className="btn-row">
             <button className="button button--primary" type="button" onClick={openCreateModal}>
               Create employee
             </button>
             <button className="button button--secondary" type="button" onClick={loadEmployees}>
-              Refresh
+              Load Employees
             </button>
           </div>
         </div>
 
         <div className="grid-form spaced-top">
           <label className="field-label">
-            Search name
+            Name
             <input className="field-input" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search by name" />
           </label>
           <label className="field-label">
@@ -252,53 +383,92 @@ export default function EmployeeManagement() {
               <option value="Contract">Contract</option>
             </select>
           </label>
-          <div className="align-end">
+          <div className="align-end" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button className="button button--secondary" type="button" onClick={clearFilters}>
+              Clear filters
+            </button>
             <button className="button button--primary" type="button" onClick={() => loadEmployees()}>
               Apply filters
             </button>
+
           </div>
         </div>
 
         {loading ? <p>Loading...</p> : (
-          <table className="items-table spaced-top">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Username</th>
-                <th>Email</th>
-                <th>Status</th>
-                <th>Department</th>
-                <th>Job Title</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((employee) => (
-                <tr key={employee.employeeId}>
-                  <td>{employee.employeeId}</td>
-                  <td>{employee.employeeCode}</td>
-                  <td>{`${employee.firstName} ${employee.lastName}`}</td>
-                  <td>{employee.username}</td>
-                  <td>{employee.email}</td>
-                  <td>{employee.employmentStatus || "-"}</td>
-                  <td>{employee.department?.departmentName || "-"}</td>
-                  <td>{employee.jobTitle?.jobTitleName || "-"}</td>
-                  <td>
-                    <button className="button button--secondary" type="button" onClick={() => openEditModal(employee)}>
-                      Edit
-                    </button>
-                  </td>
+          <>
+            <table className="items-table spaced-top">
+              <thead>
+                <tr>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("employeeId")}>ID <span className="table-sort-indicator">{sortConfig.key === "employeeId" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("employeeCode")}>Emp Code <span className="table-sort-indicator">{sortConfig.key === "employeeCode" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("name")}>Name <span className="table-sort-indicator">{sortConfig.key === "name" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("username")}>Username <span className="table-sort-indicator">{sortConfig.key === "username" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("email")}>Email <span className="table-sort-indicator">{sortConfig.key === "email" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("status")}>Status <span className="table-sort-indicator">{sortConfig.key === "status" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("department")}>Department <span className="table-sort-indicator">{sortConfig.key === "department" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th><button className="table-sort-button" type="button" onClick={() => handleSort("jobTitle")}>Job Title <span className="table-sort-indicator">{sortConfig.key === "jobTitle" ? (sortConfig.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                  <th>Edit</th>
+                  <th>Delete</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {visibleEmployees.map((employee) => (
+                  <tr key={employee.employeeId}>
+                    <td>{employee.employeeId}</td>
+                    <td>{employee.employeeCode}</td>
+                    <td>{`${employee.firstName} ${employee.lastName}`}</td>
+                    <td>{employee.username}</td>
+                    <td>{employee.email}</td>
+                    <td>{employee.employmentStatus || "-"}</td>
+                    <td>{employee.department?.departmentName || "-"}</td>
+                    <td>{employee.jobTitle?.jobTitleName || "-"}</td>
+                    <td>
+                      <button className="icon-button" type="button" onClick={() => openEditModal(employee)} title="Edit employee">
+                        ✏️
+                      </button>
+                    </td>
+                    <td>
+                      <button className="icon-button" type="button" onClick={() => handleDeleteEmployee(employee.employeeId)} title="Delete employee">
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {employees.length > 0 ? (
+              <div className="table-footer">
+                <div className="table-footer__controls">
+                  <label className="table-page-size">
+                    <span>Rows</span>
+                    <select
+                      value={pageSize}
+                      onChange={(event) => {
+                        setPageSize(Number(event.target.value));
+                        setPage(1);
+                      }}
+                    >
+                      {pageSizeOptions.map((size) => (
+                        <option key={size} value={size}>{size}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <span className="table-summary">Showing {Math.min((page - 1) * pageSize + 1, sortedEmployees.length)}-{Math.min(page * pageSize, sortedEmployees.length)} of {sortedEmployees.length}</span>
+                </div>
+                <div className="pagination-controls">
+                  <button className="button button--secondary" type="button" disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Prev</button>
+                  <span>Page {page} of {totalPages}</span>
+                  <button className="button button--secondary" type="button" disabled={page === totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</button>
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
 
       {isModalOpen ? (
         <div className="modal-overlay">
-          <div className="modal-card">
+          <div className="modal-card modal-compact">
             <div className="modal-row">
               <h3>{editingEmployee ? "Edit employee" : "Create employee"}</h3>
               <button className="button button--secondary" type="button" onClick={closeModal}>
@@ -314,23 +484,27 @@ export default function EmployeeManagement() {
                 </label>
               )}
               <label className="field-label small-label">
-                First name
-                <input className="field-input small-input" required value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
+                <span className="field-label-title">First name <span className="required-asterisk">*</span></span>
+                <input className="field-input small-input" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
+                {formErrors.firstName ? <div className="error-text">{formErrors.firstName}</div> : null}
               </label>
               <label className="field-label small-label">
-                Last name
-                <input className="field-input small-input" required value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
+                <span className="field-label-title">Last name <span className="required-asterisk">*</span></span>
+                <input className="field-input small-input" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
+                {formErrors.lastName ? <div className="error-text">{formErrors.lastName}</div> : null}
               </label>
               <label className="field-label small-label">
-                Username
-                <input className="field-input small-input" required value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
+                <span className="field-label-title">Username <span className="required-asterisk">*</span></span>
+                <input className="field-input small-input" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
+                {formErrors.username ? <div className="error-text">{formErrors.username}</div> : null}
               </label>
               <label className="field-label small-label">
-                Email
-                <input className="field-input small-input" required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+                <span className="field-label-title">Email <span className="required-asterisk">*</span></span>
+                <input className="field-input small-input" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+                {formErrors.email ? <div className="error-text">{formErrors.email}</div> : null}
               </label>
               <label className="field-label small-label modal-grid-2">
-                Gender
+                <span className="field-label-title">Gender</span>
                 <div className="radio-row">
                   {['Female', 'Male', 'Other'].map((option) => (
                     <label key={option} className="radio-label">
@@ -347,32 +521,33 @@ export default function EmployeeManagement() {
                 </div>
               </label>
               <label className="field-label small-label">
-                Phone
+                <span className="field-label-title">Phone</span>
                 <input className="field-input small-input" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
               </label>
               <label className="field-label small-label">
-                Date of birth
+                <span className="field-label-title">Date of birth</span>
                 <input className="field-input small-input" type="date" value={form.dateOfBirth} onChange={(event) => setForm({ ...form, dateOfBirth: event.target.value })} />
               </label>
               <label className="field-label small-label">
-                Date of joining
+                <span className="field-label-title">Date of joining</span>
                 <input className="field-input small-input" type="date" value={form.dateOfJoining} onChange={(event) => setForm({ ...form, dateOfJoining: event.target.value })} />
               </label>
               <label className="field-label small-label">
-                Salary
+                <span className="field-label-title">Salary</span>
                 <input className="field-input small-input" type="number" value={form.salary} onChange={(event) => setForm({ ...form, salary: event.target.value })} />
               </label>
               <label className="field-label small-label">
-                Department
+                <span className="field-label-title">Department <span className="required-asterisk">*</span></span>
                 <select className="field-input small-input" value={form.departmentId} onChange={(event) => setForm({ ...form, departmentId: event.target.value })}>
                   <option value="1">Engineering</option>
                   <option value="2">QA</option>
                   <option value="3">HR</option>
                   <option value="4">Finance</option>
                 </select>
+                {formErrors.departmentId ? <div className="error-text">{formErrors.departmentId}</div> : null}
               </label>
               <label className="field-label small-label">
-                Job title
+                <span className="field-label-title">Job title <span className="required-asterisk">*</span></span>
                 <select className="field-input small-input" value={form.jobTitleId} onChange={(event) => setForm({ ...form, jobTitleId: event.target.value })}>
                   <option value="1">Test Engineer</option>
                   <option value="2">Senior Test Engineer</option>
@@ -380,13 +555,14 @@ export default function EmployeeManagement() {
                   <option value="4">Software Developer</option>
                   <option value="5">HR Executive</option>
                 </select>
+                {formErrors.jobTitleId ? <div className="error-text">{formErrors.jobTitleId}</div> : null}
               </label>
               <label className="field-label small-label">
-                Supervisor ID
+                <span className="field-label-title">Supervisor ID</span>
                 <input className="field-input small-input" type="number" value={form.supervisorId} onChange={(event) => setForm({ ...form, supervisorId: event.target.value })} />
               </label>
               <label className="field-label small-label">
-                Status
+                <span className="field-label-title">Status</span>
                 <select className="field-input small-input" value={form.employmentStatus} onChange={(event) => setForm({ ...form, employmentStatus: event.target.value })}>
                   <option value="Permanent">Permanent</option>
                   <option value="Contract">Contract</option>
@@ -435,6 +611,19 @@ export default function EmployeeManagement() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmDeleteId ? (
+        <div className="popup-modal">
+          <div className="popup-card confirm-modal-card">
+            <h3>Confirm delete</h3>
+            <p className="confirm-message">Are you sure you want to delete this employee?</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="button button--secondary" onClick={cancelDelete}>Cancel</button>
+              <button className="button button--primary" onClick={confirmDelete}>Delete</button>
+            </div>
           </div>
         </div>
       ) : null}
