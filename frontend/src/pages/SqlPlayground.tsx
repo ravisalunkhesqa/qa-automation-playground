@@ -28,7 +28,7 @@ ORDER BY table_name;`);
   };
   function renderTableFromRows(rows: any[]) {
     if (!rows || rows.length === 0) return null
-    const headers = Array.from(
+    const headers: string[] = Array.from(
       rows.reduce((set, r) => {
         Object.keys(r || {}).forEach((k) => set.add(k))
         return set
@@ -42,15 +42,15 @@ ORDER BY table_name;`);
           <table className="sql-result-table">
             <thead>
               <tr>
-                {headers.map((h) => (
+                {headers.map((h: string) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => (
+              {rows.map((row: any, i: number) => (
                 <tr key={i}>
-                  {headers.map((h) => (
+                  {headers.map((h: string) => (
                     <td key={h}>{row && row[h] !== undefined ? String(row[h]) : ''}</td>
                   ))}
                 </tr>

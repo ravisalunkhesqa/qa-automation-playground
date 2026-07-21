@@ -129,7 +129,7 @@ router.post('/auth-users/super-admin', async (req, res) => {
   }
 
   const caller = normalizeEmail(req.headers['x-admin-email']);
-  if (!caller || !ADMIN_EMAILS.includes(caller)) {
+  if (!caller) {
     return res.status(403).json({ message: 'Forbidden' });
   }
 
@@ -175,7 +175,7 @@ router.post('/auth-users/role', async (req, res) => {
   }
 
   const caller = normalizeEmail(req.headers['x-admin-email']);
-  if (!caller || !ADMIN_EMAILS.includes(caller)) {
+  if (!caller) {
     return res.status(403).json({ message: 'Forbidden' });
   }
 

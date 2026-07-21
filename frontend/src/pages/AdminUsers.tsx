@@ -82,21 +82,6 @@ export default function AdminUsers() {
     }
   }
 
-  async function makeSuperAdmin(email: string) {
-    setError(null);
-    setLoading(true);
-    try {
-      const headers: any = {};
-      if (userEmail) headers['x-admin-email'] = userEmail.toLowerCase();
-      const res = await axios.post(`${API_ROOT}/admin/auth-users/super-admin`, { email }, { headers });
-      setRows(res.data.rows || res.data || null);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || err.message || 'Failed to update user');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function openRoleModal(row: any) {
     setRoleModalRow(row);
     const displayRole = getDisplayRole(row);
@@ -113,8 +98,8 @@ export default function AdminUsers() {
     try {
       const headers: any = {};
       if (userEmail) headers['x-admin-email'] = userEmail.toLowerCase();
-      const res = await axios.post(`${API_ROOT}/admin/auth-users/role`, { email, role }, { headers });
-      setRows(res.data.rows || res.data || null);
+      await axios.post(`${API_ROOT}/admin/auth-users/role`, { email, role }, { headers });
+      await load();
       closeRoleModal();
     } catch (err: any) {
       setError(err?.response?.data?.message || err.message || 'Failed to assign role');
@@ -140,7 +125,7 @@ export default function AdminUsers() {
     try {
       const headers: any = {};
       if (userEmail) headers['x-admin-email'] = userEmail.toLowerCase();
-      const res = await axios.delete(`${API_ROOT}/admin/auth-users/${userId}`, { headers });
+      await axios.delete(`${API_ROOT}/admin/auth-users/${userId}`, { headers });
       setRows((currentRows) => (currentRows || []).filter((row) => row.id !== userId));
     } catch (err: any) {
       setError(err?.response?.data?.message || err.message || 'Failed to delete user');

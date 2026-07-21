@@ -3,14 +3,11 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabaseClient";
 
 const API_ROOT = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
-const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean);
 
 export default function Layout() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const navigate = useNavigate();
-  const [pageTitle, setPageTitle] = useState<string>("QA Automation Playground");
 
   useEffect(() => {
     const loadSession = async () => {
@@ -24,20 +21,17 @@ export default function Layout() {
         try {
           const res = await fetch(`${API_ROOT}/admin/auth-users/me`, {
             headers: {
-              'x-admin-email': email.toLowerCase()
+              'x-admin-email': (email as string).toLowerCase()
             }
           });
           if (res.ok) {
             const payload = await res.json();
             setIsAdmin(Boolean(payload.allowed));
-            setIsSuperAdmin(Boolean(payload.is_super_admin));
           } else {
             setIsAdmin(false);
-            setIsSuperAdmin(false);
           }
         } catch (error) {
           setIsAdmin(false);
-          setIsSuperAdmin(false);
         }
       }
     };
@@ -50,21 +44,18 @@ export default function Layout() {
       if (email) {
         fetch(`${API_ROOT}/admin/auth-users/me`, {
           headers: {
-            'x-admin-email': email.toLowerCase()
+            'x-admin-email': (email as string).toLowerCase()
           }
         })
           .then((res) => res.ok ? res.json() : Promise.reject(res))
           .then((payload) => {
             setIsAdmin(Boolean(payload.allowed));
-            setIsSuperAdmin(Boolean(payload.is_super_admin));
           })
           .catch(() => {
             setIsAdmin(false);
-            setIsSuperAdmin(false);
           });
       } else {
         setIsAdmin(false);
-        setIsSuperAdmin(false);
       }
     }) ?? { data: null };
 
