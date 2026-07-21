@@ -5,7 +5,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const { supabase, supabaseHealth } = require("./supabase");
-const { initializeDatabase } = require("./db");
+const { initializeDatabase, testConnection } = require("./db");
 
 const app = express();
 const hrmsRoutes = require("./routes/hrms");
@@ -69,9 +69,23 @@ app.get('/', (req, res) => {
 app.get("/api/health", async (req, res) => {
   try {
     const result = await supabaseHealth();
+    const databaseStatus = await testConnection().then((dbResult) => ({
+      connected: true,
+      now: dbResult?.now || null
+    })).catch((error) => ({
+      connected: false,
+      error: error.message
+    }));
+
     res.json({
       status: "SUCCESS",
       message: "QA Automation Playground API Running",
+      database: {
+        configured: Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL),
+        connected: databaseStatus.connected,
+        error: databaseStatus.error || null,
+        now: databaseStatus.now || null
+      },
       supabase: {
         url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
         publishableKeyConfigured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY),
@@ -83,6 +97,11 @@ app.get("/api/health", async (req, res) => {
       status: "ERROR",
       message: "Supabase connection failed",
       error: error.message,
+      database: {
+        configured: Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL),
+        connected: false,
+        error: error.message
+      },
       supabase: {
         url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
         publishableKeyConfigured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)

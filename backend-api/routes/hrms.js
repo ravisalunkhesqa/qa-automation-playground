@@ -233,6 +233,18 @@ const fetchEmployeesFromDb = async () => {
   }
 };
 
+const fetchEmployeesFromDbWithSource = async () => {
+  try {
+    const rows = await fetchEmployeesFromDb();
+    return { employees: rows, source: 'database' };
+  } catch (error) {
+    if (isDbUnavailable(error)) {
+      return { employees: fallbackEmployees, source: 'fallback' };
+    }
+    throw error;
+  }
+};
+
 const fetchEmployeeFromDb = async (id) => {
   try {
     const result = await query(`
@@ -413,7 +425,8 @@ const deleteEmployeeFallback = (id) => {
 
 router.get('/employees', async (req, res) => {
   try {
-    const employees = (await fetchEmployeesFromDb()).map(buildEmployeeResponse);
+    const { employees: rawEmployees, source } = await fetchEmployeesFromDbWithSource();
+    const employees = rawEmployees.map(buildEmployeeResponse);
     const filters = {
       name: req.query.name,
       department: req.query.department,
@@ -427,6 +440,7 @@ router.get('/employees', async (req, res) => {
     res.json({
       items: paged.items,
       pagination: paged.pagination,
+      dataSource: source,
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch employees', error: error.message });
