@@ -20,7 +20,8 @@ function getDbConfig() {
     database: parsed.pathname.replace(/^\//, ''),
     user: decodeURIComponent(parsed.username),
     password: decodeURIComponent(parsed.password),
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
+    family: 4
   };
 
   // Prevent accidental usage of localhost or 127.0.0.1 to avoid local DB access.

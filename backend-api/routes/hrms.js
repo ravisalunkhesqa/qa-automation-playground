@@ -235,8 +235,45 @@ const fetchEmployeesFromDb = async () => {
 
 const fetchEmployeesFromDbWithSource = async () => {
   try {
-    const rows = await fetchEmployeesFromDb();
-    return { employees: rows, source: 'database' };
+    const result = await query(`
+      SELECT
+        e.employee_id,
+        e.employee_code,
+        e.first_name,
+        e.last_name,
+        e.username,
+        e.email,
+        e.gender,
+        e.phone,
+        e.date_of_birth,
+        e.date_of_joining,
+        e.employment_status,
+        e.salary,
+        e.department_id,
+        d.department_name,
+        e.job_title_id,
+        jt.job_title_name,
+        e.supervisor_id,
+        s.first_name AS supervisor_first_name,
+        s.last_name AS supervisor_last_name,
+        e.is_active,
+        e.is_manager,
+        e.is_remote_worker,
+        a.address_line1,
+        a.address_line2,
+        a.city,
+        a.state,
+        a.country,
+        a.zipcode,
+        e.created_at
+      FROM employees e
+      LEFT JOIN departments d ON d.department_id = e.department_id
+      LEFT JOIN job_titles jt ON jt.job_title_id = e.job_title_id
+      LEFT JOIN employees s ON s.employee_id = e.supervisor_id
+      LEFT JOIN employee_addresses a ON a.employee_id = e.employee_id
+      ORDER BY e.employee_id ASC
+    `);
+    return { employees: result.rows, source: 'database' };
   } catch (error) {
     if (isDbUnavailable(error)) {
       return { employees: fallbackEmployees, source: 'fallback' };

@@ -64,3 +64,27 @@ test('getDbConfig supports SUPABASE_DB_URL for existing Supabase projects', () =
     }
   }
 });
+
+test('getDbConfig forces IPv4 for Supabase-hosted connections', () => {
+  const originalDatabaseUrl = process.env.DATABASE_URL;
+  const originalSupabaseDbUrl = process.env.SUPABASE_DB_URL;
+  delete process.env.DATABASE_URL;
+  process.env.SUPABASE_DB_URL = 'postgresql://postgres:secret@db.example.supabase.co:5432/postgres';
+
+  try {
+    const config = getDbConfig();
+    assert.equal(config.family, 4);
+  } finally {
+    if (originalDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = originalDatabaseUrl;
+    }
+
+    if (originalSupabaseDbUrl === undefined) {
+      delete process.env.SUPABASE_DB_URL;
+    } else {
+      process.env.SUPABASE_DB_URL = originalSupabaseDbUrl;
+    }
+  }
+});
