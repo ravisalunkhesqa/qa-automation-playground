@@ -41,6 +41,8 @@ Use this guide when you want to deploy the frontend on Vercel and the backend on
 In Render, add the following environment variables for the backend service:
 - `NEXT_PUBLIC_SUPABASE_URL` = `https://mudathgsbymbxhlsimsc.supabase.co`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = `sb_publishable_MwyiYeVQq_3Cr6mGNGpSzg_y8KXx6Av`
+- `DATABASE_URL` = `postgresql://postgres:eln2EhtfdP8x0fsl@db.mudathgsbymbxhlsimsc.supabase.co:5432/postgres`
+- `SUPABASE_DB_URL` = `postgresql://postgres:eln2EhtfdP8x0fsl@db.mudathgsbymbxhlsimsc.supabase.co:5432/postgres`
 
 ### Deploy and verify
 1. Deploy the service.
