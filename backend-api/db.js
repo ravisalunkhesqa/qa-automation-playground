@@ -14,6 +14,15 @@ function getDbConfig() {
   }
 
   const parsed = new URL(connectionString);
+
+  // Defensive measure: strip any ?family=4 (or similar) query params from the
+  // connection string. These params aren't understood by the pg Pool
+  // constructor, so we rely solely on the explicit config object below to
+  // force IPv4 resolution.
+  if (parsed.searchParams.has('family')) {
+    parsed.searchParams.delete('family');
+  }
+
   const cfg = {
     host: parsed.hostname,
     port: Number(parsed.port || 5432),
@@ -21,7 +30,8 @@ function getDbConfig() {
     user: decodeURIComponent(parsed.username),
     password: decodeURIComponent(parsed.password),
     ssl: { rejectUnauthorized: false },
-    family: 4
+    family: 4,
+    preferIPv4: true
   };
 
   // Prevent accidental usage of localhost or 127.0.0.1 to avoid local DB access.
