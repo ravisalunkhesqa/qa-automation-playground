@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { applyEmployeeFilters, paginateResults, validateEmployeePayload } = require('../routes/hrms');
+const { applyEmployeeFilters, paginateResults, validateEmployeePayload, buildEmployeeResponse } = require('../routes/hrms');
 
 test('filters employees by department, status and active flag', () => {
   const employees = [
@@ -29,4 +29,8 @@ test('validates required employee fields', () => {
   assert.ok(errors.includes('lastName is required'));
   assert.ok(errors.includes('username is required'));
   assert.ok(errors.includes('email is required'));
+});
+
+test('returns null for missing employee payloads instead of throwing', () => {
+  assert.equal(buildEmployeeResponse(null), null);
 });

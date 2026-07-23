@@ -10,6 +10,7 @@ WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
 ORDER BY table_name;`);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [healthStatus, setHealthStatus] = useState<any>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({ key: "", direction: "asc" });
@@ -17,6 +18,19 @@ ORDER BY table_name;`);
 
   useEffect(() => {
     document.title = "SQL Playground — QA Automation Playground";
+  }, []);
+
+  useEffect(() => {
+    const fetchHealth = async () => {
+      try {
+        const res = await axios.get(`${API_ROOT}/health`);
+        setHealthStatus(res.data || null);
+      } catch {
+        setHealthStatus(null);
+      }
+    };
+
+    fetchHealth();
   }, []);
 
   const rows: any[] | null = Array.isArray(result) ? result : result?.rows ?? null;
@@ -62,6 +76,11 @@ ORDER BY table_name;`);
     return list;
   }, [rows, sortConfig]);
 
+  const sqlUnavailable = Boolean(
+    healthStatus?.supabase?.sdkHealthy &&
+    healthStatus?.database?.connected === false
+  );
+
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const visibleRows = useMemo<any[]>(() => {
     const startIndex = (page - 1) * pageSize;
@@ -90,6 +109,12 @@ ORDER BY table_name;`);
     e?.preventDefault();
     setError(null);
     setResult(null);
+
+    if (sqlUnavailable) {
+      setError("SQL playground is unavailable in this deployment. SDK-backed data is available through the API routes.");
+      return;
+    }
+
     try {
       const res = await axios.post(`${API_ROOT}/sql/run`, { query });
       setResult(res.data || {});
@@ -163,6 +188,15 @@ ORDER BY table_name;`);
       <h1>SQL Playground</h1>
       <p className="intro">Run SQL queries against the database.</p>
 
+      {sqlUnavailable ? (
+        <div className="panel spaced-panel" style={{ borderLeft: "4px solid #f59e0b", background: "#fff7ed" }}>
+          <strong>SDK-backed data available</strong>
+          <p style={{ marginBottom: 0 }}>
+            The app data routes are healthy through Supabase, but the direct SQL playground is unavailable in this deployment because the raw Postgres host cannot be reached.
+          </p>
+        </div>
+      ) : null}
+
       <div className="page-card compact spaced-panel">
         <form onSubmit={runQuery} className="form-grid compact-form">
           <label className="field-label">
@@ -170,7 +204,7 @@ ORDER BY table_name;`);
             <textarea className="field-input" rows={6} value={query} onChange={(e) => setQuery(e.target.value)} />
           </label>
           <div className="form-actions">
-            <button className="button button--primary" type="submit">Run</button>
+            <button className="button button--primary" type="submit" disabled={sqlUnavailable}>Run</button>
             <button className="button button--secondary" type="button" onClick={() => { setQuery(`SELECT table_name\nFROM information_schema.tables\nWHERE table_schema = 'public' AND table_type = 'BASE TABLE'\nORDER BY table_name;`); setResult(null); setError(null); }}>Reset</button>
           </div>
         </form>

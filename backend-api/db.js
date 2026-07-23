@@ -5,12 +5,36 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
+function getConnectionString() {
+  const connectionString = process.env.SUPABASE_DB_URL
+    || process.env.POSTGRES_URL
+    || process.env.POSTGRES_PRISMA_URL
+    || process.env.POSTGRES_URL_NON_POOLING
+    || process.env.DATABASE_URL;
+
+  if (connectionString) {
+    return connectionString;
+  }
+
+  const host = process.env.POSTGRES_HOST || process.env.PGHOST;
+  const user = process.env.POSTGRES_USER || process.env.PGUSER;
+  const password = process.env.POSTGRES_PASSWORD || process.env.PGPASSWORD;
+  const database = process.env.POSTGRES_DATABASE || process.env.PGDATABASE;
+  const port = process.env.POSTGRES_PORT || 5432;
+
+  if (host && user && password && database) {
+    return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+  }
+
+  return '';
+}
+
 function getDbConfig() {
   // Enforce using the Supabase-provided Postgres URL for all DB operations in this playground.
-  const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+  const connectionString = getConnectionString();
 
   if (!connectionString) {
-    throw new Error('SUPABASE_DB_URL or DATABASE_URL must be set. Local DB usage is disabled for the SQL playground.');
+    throw new Error('SUPABASE_DB_URL, POSTGRES_URL, POSTGRES_* or DATABASE_URL must be set. Local DB usage is disabled for the SQL playground.');
   }
 
   const parsed = new URL(connectionString);
@@ -29,9 +53,8 @@ function getDbConfig() {
     database: parsed.pathname.replace(/^\//, ''),
     user: decodeURIComponent(parsed.username),
     password: decodeURIComponent(parsed.password),
-    ssl: { rejectUnauthorized: false },
     family: 4,
-    preferIPv4: true
+    ssl: { rejectUnauthorized: false }
   };
 
   // Prevent accidental usage of localhost or 127.0.0.1 to avoid local DB access.

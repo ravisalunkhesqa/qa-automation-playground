@@ -1,5 +1,6 @@
 const express = require('express');
 const { query } = require('../db');
+const { supabase } = require('../supabase');
 
 const router = express.Router();
 
@@ -66,6 +67,10 @@ let fallbackEmployees = [
 ];
 
 const buildEmployeeResponse = (employee) => {
+  if (!employee) {
+    return null;
+  }
+
   const department = employee.department || null;
   const jobTitle = employee.jobTitle || null;
   const supervisor = employee.supervisor || null;
@@ -162,6 +167,53 @@ const validateEmployeePayload = (payload = {}) => {
 
 const isDbUnavailable = (error) => Boolean(error && /ENOTFOUND|ECONNREFUSED|timeout|connect/i.test(error.message || ''));
 
+const normalizeSupabaseEmployee = (row = {}) => {
+  const address = Array.isArray(row.employee_addresses) ? row.employee_addresses[0] : null;
+  const department = row.department || null;
+  const jobTitle = row.job_title || null;
+  const supervisor = row.supervisor || null;
+
+  return {
+    employeeId: row.employee_id ?? row.employeeId,
+    employeeCode: row.employee_code ?? row.employeeCode,
+    firstName: row.first_name ?? row.firstName,
+    lastName: row.last_name ?? row.lastName,
+    username: row.username,
+    email: row.email,
+    gender: row.gender,
+    phone: row.phone,
+    dateOfBirth: row.date_of_birth ?? row.dateOfBirth,
+    dateOfJoining: row.date_of_joining ?? row.dateOfJoining,
+    employmentStatus: row.employment_status ?? row.employmentStatus,
+    salary: row.salary,
+    department: department ? {
+      departmentId: department.department_id ?? department.departmentId,
+      departmentName: department.department_name ?? department.departmentName,
+    } : null,
+    jobTitle: jobTitle ? {
+      jobTitleId: jobTitle.job_title_id ?? jobTitle.jobTitleId,
+      jobTitleName: jobTitle.job_title_name ?? jobTitle.jobTitleName,
+    } : null,
+    supervisor: supervisor ? {
+      employeeId: supervisor.employee_id ?? supervisor.employeeId,
+      firstName: supervisor.first_name ?? supervisor.firstName,
+      lastName: supervisor.last_name ?? supervisor.lastName,
+    } : null,
+    isActive: row.is_active ?? row.isActive,
+    isManager: row.is_manager ?? row.isManager,
+    isRemoteWorker: row.is_remote_worker ?? row.isRemoteWorker,
+    address: address ? {
+      addressLine1: address.address_line1 ?? address.addressLine1,
+      addressLine2: address.address_line2 ?? address.addressLine2,
+      city: address.city,
+      state: address.state,
+      country: address.country,
+      zipcode: address.zipcode,
+    } : null,
+    createdAt: row.created_at ?? row.createdAt,
+  };
+};
+
 const generateEmployeeCode = (employees = fallbackEmployees) => {
   const numericCodes = employees
     .map((employee) => Number(String(employee.employeeCode || employee.employee_code || '').replace(/\D/g, '')))
@@ -172,6 +224,13 @@ const generateEmployeeCode = (employees = fallbackEmployees) => {
 };
 
 const getNextEmployeeCode = async () => {
+  if (supabase) {
+    const { data, error } = await supabase.from('employees').select('employee_code');
+    if (!error && data) {
+      return generateEmployeeCode(data.map((row) => ({ employeeCode: row.employee_code })));
+    }
+  }
+
   try {
     const result = await query("SELECT COALESCE(MAX(CAST(REGEXP_REPLACE(employee_code, '\\D', '', 'g') AS INTEGER)), 0) + 1 AS next_number FROM employees");
     const nextNumber = Number(result.rows[0]?.next_number || 1);
@@ -185,6 +244,65 @@ const getNextEmployeeCode = async () => {
 };
 
 const fetchEmployeesFromDb = async () => {
+  if (supabase) {
+    const [employeesResult, departmentsResult, jobTitlesResult, supervisorsResult, addressesResult] = await Promise.all([
+      supabase.from('employees').select(`
+        employee_id,
+        employee_code,
+        first_name,
+        last_name,
+        username,
+        email,
+        gender,
+        phone,
+        date_of_birth,
+        date_of_joining,
+        employment_status,
+        salary,
+        department_id,
+        job_title_id,
+        supervisor_id,
+        is_active,
+        is_manager,
+        is_remote_worker,
+        created_at
+      `).order('employee_id', { ascending: true }),
+      supabase.from('departments').select('department_id, department_name, department_code'),
+      supabase.from('job_titles').select('job_title_id, job_title_name, description'),
+      supabase.from('employees').select('employee_id, first_name, last_name'),
+      supabase.from('employee_addresses').select('*')
+    ]);
+
+    const employeesError = employeesResult.error;
+    if (!employeesError && employeesResult.data) {
+      const departments = departmentsResult.data || [];
+      const jobTitles = jobTitlesResult.data || [];
+      const supervisors = supervisorsResult.data || [];
+      const addresses = addressesResult.data || [];
+
+      const departmentLookup = new Map(departments.map((item) => [item.department_id, item]));
+      const jobTitleLookup = new Map(jobTitles.map((item) => [item.job_title_id, item]));
+      const supervisorLookup = new Map(supervisors.map((item) => [item.employee_id, item]));
+      const addressLookup = new Map();
+
+      addresses.forEach((address) => {
+        const id = address.employee_id;
+        if (!addressLookup.has(id)) {
+          addressLookup.set(id, []);
+        }
+        addressLookup.get(id).push(address);
+      });
+
+      return employeesResult.data.map((row) => normalizeSupabaseEmployee({
+        ...row,
+        department: departmentLookup.get(row.department_id) || null,
+        job_title: jobTitleLookup.get(row.job_title_id) || null,
+        supervisor: supervisorLookup.get(row.supervisor_id) || null,
+        employee_addresses: addressLookup.get(row.employee_id) || []
+      }));
+    }
+  }
+
   try {
     const result = await query(`
       SELECT
@@ -234,6 +352,67 @@ const fetchEmployeesFromDb = async () => {
 };
 
 const fetchEmployeesFromDbWithSource = async () => {
+  if (supabase) {
+    const [employeesResult, departmentsResult, jobTitlesResult, supervisorsResult, addressesResult] = await Promise.all([
+      supabase.from('employees').select(`
+        employee_id,
+        employee_code,
+        first_name,
+        last_name,
+        username,
+        email,
+        gender,
+        phone,
+        date_of_birth,
+        date_of_joining,
+        employment_status,
+        salary,
+        department_id,
+        job_title_id,
+        supervisor_id,
+        is_active,
+        is_manager,
+        is_remote_worker,
+        created_at
+      `).order('employee_id', { ascending: true }),
+      supabase.from('departments').select('department_id, department_name, department_code'),
+      supabase.from('job_titles').select('job_title_id, job_title_name, description'),
+      supabase.from('employees').select('employee_id, first_name, last_name'),
+      supabase.from('employee_addresses').select('*')
+    ]);
+
+    if (!employeesResult.error && employeesResult.data) {
+      const departments = departmentsResult.data || [];
+      const jobTitles = jobTitlesResult.data || [];
+      const supervisors = supervisorsResult.data || [];
+      const addresses = addressesResult.data || [];
+
+      const departmentLookup = new Map(departments.map((item) => [item.department_id, item]));
+      const jobTitleLookup = new Map(jobTitles.map((item) => [item.job_title_id, item]));
+      const supervisorLookup = new Map(supervisors.map((item) => [item.employee_id, item]));
+      const addressLookup = new Map();
+
+      addresses.forEach((address) => {
+        const id = address.employee_id;
+        if (!addressLookup.has(id)) {
+          addressLookup.set(id, []);
+        }
+        addressLookup.get(id).push(address);
+      });
+
+      return {
+        employees: employeesResult.data.map((row) => normalizeSupabaseEmployee({
+          ...row,
+          department: departmentLookup.get(row.department_id) || null,
+          job_title: jobTitleLookup.get(row.job_title_id) || null,
+          supervisor: supervisorLookup.get(row.supervisor_id) || null,
+          employee_addresses: addressLookup.get(row.employee_id) || []
+        })),
+        source: 'supabase-sdk'
+      };
+    }
+  }
+
   try {
     const result = await query(`
       SELECT
@@ -283,6 +462,55 @@ const fetchEmployeesFromDbWithSource = async () => {
 };
 
 const fetchEmployeeFromDb = async (id) => {
+  if (supabase) {
+    const [employeeResult, departmentsResult, jobTitlesResult, supervisorsResult, addressesResult] = await Promise.all([
+      supabase.from('employees').select(`
+        employee_id,
+        employee_code,
+        first_name,
+        last_name,
+        username,
+        email,
+        gender,
+        phone,
+        date_of_birth,
+        date_of_joining,
+        employment_status,
+        salary,
+        department_id,
+        job_title_id,
+        supervisor_id,
+        is_active,
+        is_manager,
+        is_remote_worker,
+        created_at
+      `).eq('employee_id', id).maybeSingle(),
+      supabase.from('departments').select('department_id, department_name, department_code'),
+      supabase.from('job_titles').select('job_title_id, job_title_name, description'),
+      supabase.from('employees').select('employee_id, first_name, last_name'),
+      supabase.from('employee_addresses').select('*').eq('employee_id', id)
+    ]);
+
+    if (!employeeResult.error && employeeResult.data) {
+      const departments = departmentsResult.data || [];
+      const jobTitles = jobTitlesResult.data || [];
+      const supervisors = supervisorsResult.data || [];
+      const addresses = addressesResult.data || [];
+
+      const departmentLookup = new Map(departments.map((item) => [item.department_id, item]));
+      const jobTitleLookup = new Map(jobTitles.map((item) => [item.job_title_id, item]));
+      const supervisorLookup = new Map(supervisors.map((item) => [item.employee_id, item]));
+
+      return normalizeSupabaseEmployee({
+        ...employeeResult.data,
+        department: departmentLookup.get(employeeResult.data.department_id) || null,
+        job_title: jobTitleLookup.get(employeeResult.data.job_title_id) || null,
+        supervisor: supervisorLookup.get(employeeResult.data.supervisor_id) || null,
+        employee_addresses: addresses
+      });
+    }
+  }
+
   try {
     const result = await query(`
       SELECT
@@ -332,6 +560,18 @@ const fetchEmployeeFromDb = async (id) => {
 };
 
 const fetchDepartmentsFromDb = async () => {
+  if (supabase) {
+    const { data, error } = await supabase.from('departments').select('*').order('department_id', { ascending: true });
+    if (!error && data) {
+      return data.map((row) => ({
+        departmentId: row.department_id,
+        departmentName: row.department_name,
+        departmentCode: row.department_code,
+        description: row.description,
+      }));
+    }
+  }
+
   try {
     const result = await query(`
       SELECT department_id AS "departmentId", department_name AS "departmentName", department_code AS "departmentCode"
@@ -348,6 +588,17 @@ const fetchDepartmentsFromDb = async () => {
 };
 
 const fetchJobTitlesFromDb = async () => {
+  if (supabase) {
+    const { data, error } = await supabase.from('job_titles').select('*').order('job_title_id', { ascending: true });
+    if (!error && data) {
+      return data.map((row) => ({
+        jobTitleId: row.job_title_id,
+        jobTitleName: row.job_title_name,
+        description: row.description,
+      }));
+    }
+  }
+
   try {
     const result = await query(`
       SELECT job_title_id AS "jobTitleId", job_title_name AS "jobTitleName", description
@@ -517,71 +768,41 @@ router.post('/employees', async (req, res) => {
     const jobTitleId = req.body.jobTitleId ? Number(req.body.jobTitleId) : null;
     const supervisorId = req.body.supervisorId ? Number(req.body.supervisorId) : null;
 
-    let employeeId;
-    let createdEmployee;
-
-    try {
-      const insertResult = await query(`
-        INSERT INTO employees (
-          employee_code,
-          first_name,
-          last_name,
-          username,
-          email,
-          gender,
-          phone,
-          date_of_birth,
-          date_of_joining,
-          employment_status,
-          supervisor_id,
-          department_id,
-          job_title_id,
-          salary,
-          is_active,
-          is_manager,
-          is_remote_worker
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        RETURNING employee_id
-      `, [
-        employeeCode,
-        req.body.firstName,
-        req.body.lastName,
-        req.body.username,
-        req.body.email,
-        req.body.gender || null,
-        req.body.phone || null,
-        req.body.dateOfBirth || null,
-        req.body.dateOfJoining || null,
-        req.body.employmentStatus || 'Permanent',
-        supervisorId,
-        departmentId,
-        jobTitleId,
-        req.body.salary != null ? Number(req.body.salary) : null,
-        req.body.isActive !== undefined ? req.body.isActive : true,
-        req.body.isManager !== undefined ? req.body.isManager : false,
-        req.body.isRemoteWorker !== undefined ? req.body.isRemoteWorker : false,
-      ]);
-
-      employeeId = insertResult.rows[0].employee_id;
-      if (req.body.address) {
-        await upsertEmployeeAddress(employeeId, req.body.address);
-      }
-
-      createdEmployee = await fetchEmployeeFromDb(employeeId);
-    } catch (error) {
-      if (isDbUnavailable(error)) {
-        createdEmployee = createEmployeeFallback({
-          ...req.body,
-          employeeCode,
-          departmentId,
-          jobTitleId,
-          supervisorId,
-        });
-        employeeId = createdEmployee.employeeId;
-      } else {
-        throw error;
-      }
+    if (!supabase) {
+      return res.status(500).json({ message: 'Employee creation requires the Supabase SDK to be configured' });
     }
+
+    const payload = {
+      employee_code: employeeCode,
+      first_name: req.body.firstName,
+      last_name: req.body.lastName,
+      username: req.body.username,
+      email: req.body.email,
+      gender: req.body.gender || null,
+      phone: req.body.phone || null,
+      date_of_birth: req.body.dateOfBirth || null,
+      date_of_joining: req.body.dateOfJoining || null,
+      employment_status: req.body.employmentStatus || 'Permanent',
+      supervisor_id: supervisorId,
+      department_id: departmentId,
+      job_title_id: jobTitleId,
+      salary: req.body.salary != null ? Number(req.body.salary) : null,
+      is_active: req.body.isActive !== undefined ? req.body.isActive : true,
+      is_manager: req.body.isManager !== undefined ? req.body.isManager : false,
+      is_remote_worker: req.body.isRemoteWorker !== undefined ? req.body.isRemoteWorker : false,
+    };
+
+    const { data, error } = await supabase.from('employees').insert(payload).select('employee_id').single();
+    if (error) {
+      throw error;
+    }
+
+    const employeeId = data.employee_id;
+    if (req.body.address) {
+      await upsertEmployeeAddress(employeeId, req.body.address);
+    }
+
+    const createdEmployee = await fetchEmployeeFromDb(employeeId);
 
     res.status(201).json({ employeeId, employeeCode, message: 'Employee created successfully', employee: buildEmployeeResponse(createdEmployee) });
   } catch (error) {
@@ -595,60 +816,45 @@ router.put('/employees/:id', async (req, res) => {
     const employee = await fetchEmployeeFromDb(id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
-    // enforce required fields on PUT
     const errors = validateEmployeePayload(req.body || {});
     if (errors.length > 0) {
       return res.status(400).json({ message: 'Validation failed', errors });
     }
 
-    let updatedEmployee = employee;
-
-    try {
-      const updates = [];
-      const values = [];
-      const addField = (column, value) => {
-        if (value !== undefined) {
-          updates.push(`${column} = $${values.length + 1}`);
-          values.push(value);
-        }
-      };
-
-      addField('employee_code', req.body.employeeCode ?? employee.employee_code ?? employee.employeeCode);
-      addField('first_name', req.body.firstName ?? employee.first_name ?? employee.firstName);
-      addField('last_name', req.body.lastName ?? employee.last_name ?? employee.lastName);
-      addField('username', req.body.username ?? employee.username);
-      addField('email', req.body.email ?? employee.email);
-      addField('gender', req.body.gender ?? employee.gender);
-      addField('phone', req.body.phone ?? employee.phone);
-      addField('date_of_birth', req.body.dateOfBirth ?? employee.date_of_birth ?? employee.dateOfBirth);
-      addField('date_of_joining', req.body.dateOfJoining ?? employee.date_of_joining ?? employee.dateOfJoining);
-      addField('employment_status', req.body.employmentStatus ?? employee.employment_status ?? employee.employmentStatus);
-      addField('supervisor_id', req.body.supervisorId !== undefined ? Number(req.body.supervisorId) : employee.supervisor_id ?? employee.supervisor?.employeeId);
-      addField('department_id', req.body.departmentId !== undefined ? Number(req.body.departmentId) : employee.department_id ?? employee.department?.departmentId);
-      addField('job_title_id', req.body.jobTitleId !== undefined ? Number(req.body.jobTitleId) : employee.job_title_id ?? employee.jobTitle?.jobTitleId);
-      addField('salary', req.body.salary !== undefined ? Number(req.body.salary) : employee.salary);
-      addField('is_active', req.body.isActive !== undefined ? req.body.isActive : employee.is_active ?? employee.isActive);
-      addField('is_manager', req.body.isManager !== undefined ? req.body.isManager : employee.is_manager ?? employee.isManager);
-      addField('is_remote_worker', req.body.isRemoteWorker !== undefined ? req.body.isRemoteWorker : employee.is_remote_worker ?? employee.isRemoteWorker);
-
-      if (updates.length > 0) {
-        values.push(id);
-        await query(`UPDATE employees SET ${updates.join(', ')} WHERE employee_id = $${values.length} RETURNING employee_id`, values);
-      }
-
-      if (req.body.address) {
-        await upsertEmployeeAddress(id, req.body.address);
-      }
-
-      updatedEmployee = await fetchEmployeeFromDb(id);
-    } catch (error) {
-      if (isDbUnavailable(error)) {
-        updatedEmployee = updateEmployeeFallback(id, req.body);
-      } else {
-        throw error;
-      }
+    if (!supabase) {
+      return res.status(500).json({ message: 'Employee update requires the Supabase SDK to be configured' });
     }
 
+    const payload = {
+      employee_code: req.body.employeeCode ?? employee.employeeCode,
+      first_name: req.body.firstName ?? employee.firstName,
+      last_name: req.body.lastName ?? employee.lastName,
+      username: req.body.username ?? employee.username,
+      email: req.body.email ?? employee.email,
+      gender: req.body.gender ?? employee.gender,
+      phone: req.body.phone ?? employee.phone,
+      date_of_birth: req.body.dateOfBirth ?? employee.dateOfBirth,
+      date_of_joining: req.body.dateOfJoining ?? employee.dateOfJoining,
+      employment_status: req.body.employmentStatus ?? employee.employmentStatus,
+      supervisor_id: req.body.supervisorId !== undefined ? Number(req.body.supervisorId) : employee.supervisor?.employeeId ?? null,
+      department_id: req.body.departmentId !== undefined ? Number(req.body.departmentId) : employee.department?.departmentId ?? null,
+      job_title_id: req.body.jobTitleId !== undefined ? Number(req.body.jobTitleId) : employee.jobTitle?.jobTitleId ?? null,
+      salary: req.body.salary !== undefined ? Number(req.body.salary) : employee.salary,
+      is_active: req.body.isActive !== undefined ? req.body.isActive : employee.isActive,
+      is_manager: req.body.isManager !== undefined ? req.body.isManager : employee.isManager,
+      is_remote_worker: req.body.isRemoteWorker !== undefined ? req.body.isRemoteWorker : employee.isRemoteWorker,
+    };
+
+    const { data, error } = await supabase.from('employees').update(payload).eq('employee_id', id).select('employee_id').single();
+    if (error) {
+      throw error;
+    }
+
+    if (req.body.address) {
+      await upsertEmployeeAddress(id, req.body.address);
+    }
+
+    const updatedEmployee = await fetchEmployeeFromDb(id);
     res.json(buildEmployeeResponse(updatedEmployee));
   } catch (error) {
     res.status(500).json({ message: 'Failed to update employee', error: error.message });
@@ -661,54 +867,41 @@ router.patch('/employees/:id', async (req, res) => {
     const employee = await fetchEmployeeFromDb(id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
-    let updatedEmployee = employee;
+    if (!supabase) {
+      return res.status(500).json({ message: 'Employee update requires the Supabase SDK to be configured' });
+    }
 
-    try {
-      const updates = [];
-      const values = [];
-      const addField = (column, value) => {
-        if (value !== undefined) {
-          updates.push(`${column} = $${values.length + 1}`);
-          values.push(value);
-        }
-      };
+    const payload = {};
+    if (req.body.employeeCode !== undefined) payload.employee_code = req.body.employeeCode;
+    if (req.body.firstName !== undefined) payload.first_name = req.body.firstName;
+    if (req.body.lastName !== undefined) payload.last_name = req.body.lastName;
+    if (req.body.username !== undefined) payload.username = req.body.username;
+    if (req.body.email !== undefined) payload.email = req.body.email;
+    if (req.body.gender !== undefined) payload.gender = req.body.gender;
+    if (req.body.phone !== undefined) payload.phone = req.body.phone;
+    if (req.body.dateOfBirth !== undefined) payload.date_of_birth = req.body.dateOfBirth || null;
+    if (req.body.dateOfJoining !== undefined) payload.date_of_joining = req.body.dateOfJoining || null;
+    if (req.body.employmentStatus !== undefined) payload.employment_status = req.body.employmentStatus;
+    if (req.body.supervisorId !== undefined) payload.supervisor_id = req.body.supervisorId !== null ? Number(req.body.supervisorId) : null;
+    if (req.body.departmentId !== undefined) payload.department_id = req.body.departmentId !== null ? Number(req.body.departmentId) : null;
+    if (req.body.jobTitleId !== undefined) payload.job_title_id = req.body.jobTitleId !== null ? Number(req.body.jobTitleId) : null;
+    if (req.body.salary !== undefined) payload.salary = req.body.salary !== null ? Number(req.body.salary) : null;
+    if (req.body.isActive !== undefined) payload.is_active = req.body.isActive;
+    if (req.body.isManager !== undefined) payload.is_manager = req.body.isManager;
+    if (req.body.isRemoteWorker !== undefined) payload.is_remote_worker = req.body.isRemoteWorker;
 
-      addField('employee_code', req.body.employeeCode);
-      addField('first_name', req.body.firstName);
-      addField('last_name', req.body.lastName);
-      addField('username', req.body.username);
-      addField('email', req.body.email);
-      addField('gender', req.body.gender);
-      addField('phone', req.body.phone);
-      addField('date_of_birth', req.body.dateOfBirth !== undefined ? req.body.dateOfBirth || null : undefined);
-      addField('date_of_joining', req.body.dateOfJoining !== undefined ? req.body.dateOfJoining || null : undefined);
-      addField('employment_status', req.body.employmentStatus);
-      addField('supervisor_id', req.body.supervisorId !== undefined ? Number(req.body.supervisorId) : undefined);
-      addField('department_id', req.body.departmentId !== undefined ? Number(req.body.departmentId) : undefined);
-      addField('job_title_id', req.body.jobTitleId !== undefined ? Number(req.body.jobTitleId) : undefined);
-      addField('salary', req.body.salary !== undefined ? Number(req.body.salary) : undefined);
-      addField('is_active', req.body.isActive !== undefined ? req.body.isActive : undefined);
-      addField('is_manager', req.body.isManager !== undefined ? req.body.isManager : undefined);
-      addField('is_remote_worker', req.body.isRemoteWorker !== undefined ? req.body.isRemoteWorker : undefined);
-
-      if (updates.length > 0) {
-        values.push(id);
-        await query(`UPDATE employees SET ${updates.join(', ')} WHERE employee_id = $${values.length} RETURNING employee_id`, values);
-      }
-
-      if (req.body.address) {
-        await upsertEmployeeAddress(id, req.body.address);
-      }
-
-      updatedEmployee = await fetchEmployeeFromDb(id);
-    } catch (error) {
-      if (isDbUnavailable(error)) {
-        updatedEmployee = updateEmployeeFallback(id, req.body);
-      } else {
+    if (Object.keys(payload).length > 0) {
+      const { error } = await supabase.from('employees').update(payload).eq('employee_id', id);
+      if (error) {
         throw error;
       }
     }
 
+    if (req.body.address) {
+      await upsertEmployeeAddress(id, req.body.address);
+    }
+
+    const updatedEmployee = await fetchEmployeeFromDb(id);
     res.json(buildEmployeeResponse(updatedEmployee));
   } catch (error) {
     res.status(500).json({ message: 'Failed to update employee', error: error.message });
@@ -717,17 +910,19 @@ router.patch('/employees/:id', async (req, res) => {
 
 router.delete('/employees/:id', async (req, res) => {
   try {
-    try {
-      const result = await query('DELETE FROM employees WHERE employee_id = $1 RETURNING employee_id', [req.params.id]);
-      if (result.rowCount === 0) return res.status(404).json({ message: 'Employee not found' });
-    } catch (error) {
-      if (isDbUnavailable(error)) {
-        const deleted = deleteEmployeeFallback(req.params.id);
-        if (!deleted) return res.status(404).json({ message: 'Employee not found' });
-      } else {
-        throw error;
-      }
+    if (!supabase) {
+      return res.status(500).json({ message: 'Employee deletion requires the Supabase SDK to be configured' });
     }
+
+    const { data, error } = await supabase.from('employees').delete().eq('employee_id', req.params.id).select('employee_id');
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
     res.status(204).send();
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete employee', error: error.message });
@@ -822,3 +1017,4 @@ module.exports.applyEmployeeFilters = applyEmployeeFilters;
 module.exports.paginateResults = paginateResults;
 module.exports.validateEmployeePayload = validateEmployeePayload;
 module.exports.generateEmployeeCode = generateEmployeeCode;
+module.exports.buildEmployeeResponse = buildEmployeeResponse;

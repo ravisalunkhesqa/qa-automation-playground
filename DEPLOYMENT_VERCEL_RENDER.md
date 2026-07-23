@@ -39,10 +39,20 @@ Use this guide when you want to deploy the frontend on Vercel and the backend on
 
 ### Add environment variables
 In Render, add the following environment variables for the backend service:
-- `NEXT_PUBLIC_SUPABASE_URL` = `https://mudathgsbymbxhlsimsc.supabase.co`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = `sb_publishable_MwyiYeVQq_3Cr6mGNGpSzg_y8KXx6Av`
-- `DATABASE_URL` = `postgresql://postgres:eln2EhtfdP8x0fsl@db.mudathgsbymbxhlsimsc.supabase.co:5432/postgres`
-- `SUPABASE_DB_URL` = `postgresql://postgres:eln2EhtfdP8x0fsl@db.mudathgsbymbxhlsimsc.supabase.co:5432/postgres`
+- `SUPABASE_URL` = the exact value from your Supabase project
+- `SUPABASE_SERVICE_ROLE_KEY` = the exact service-role key from your Supabase project
+- `SUPABASE_ANON_KEY` = the exact anon key from your Supabase project
+- `SUPABASE_DB_URL` = copy the exact value of `POSTGRES_URL` from the Supabase Vercel integration
+- `DATABASE_URL` = copy the exact value of `POSTGRES_URL` from the Supabase Vercel integration
+
+In practice, both `SUPABASE_DB_URL` and `DATABASE_URL` should be set to the same exact Postgres connection string that Supabase exposes for your project. The backend code now also accepts these Vercel/Supabase synced aliases:
+- `POSTGRES_URL`
+- `POSTGRES_PRISMA_URL`
+- `POSTGRES_URL_NON_POOLING`
+- `POSTGRES_HOST`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DATABASE`
 
 ### Deploy and verify
 1. Deploy the service.
@@ -68,11 +78,15 @@ In Render, add the following environment variables for the backend service:
 
 ### Add frontend environment variables
 In Vercel, add these variables (production):
-- `VITE_SUPABASE_URL` = `https://mudathgsbymbxhlsimsc.supabase.co`
-- `VITE_SUPABASE_PUBLISHABLE_KEY` = `sb_publishable_MwyiYeVQq_3Cr6mGNGpSzg_y8KXx6Av`
-- `VITE_API_BASE_URL` = `https://qa-automation-playground.onrender.com/api`
+- `VITE_SUPABASE_URL` = the exact `SUPABASE_URL` value from your Supabase project
+- `VITE_SUPABASE_PUBLISHABLE_KEY` = the exact publishable/anon key from your Supabase project
+- `NEXT_PUBLIC_SUPABASE_URL` = the exact `SUPABASE_URL` value from your Supabase project
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = the exact publishable/anon key from your Supabase project
+- `VITE_API_BASE_URL` = your deployed Render backend URL, for example `https://qa-automation-playground.onrender.com/api`
 
 Replace the example `VITE_API_BASE_URL` above if you change your Render primary URL.
+
+> If Supabase is connected through the Vercel integration, the synced values such as `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `POSTGRES_URL` are also accepted by the current code path.
 
 ### Deploy and verify
 1. Deploy the Vercel project.
